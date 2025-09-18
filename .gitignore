@@ -1,0 +1,13 @@
+# Ignore virtual environment
+venv_cpu/
+venv_tf/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore large binaries (optional)
+*.dll
+*.lib
+*.so
+*.pyd
