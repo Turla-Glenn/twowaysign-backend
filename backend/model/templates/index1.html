@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Language to Text</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      background: #f5f7fb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 420px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .title {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 15px;
+    }
+
+    video {
+      border-radius: 16px;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      background: #000;
+      box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .info {
+      margin-top: 15px;
+      background: #f9fafc;
+      padding: 10px;
+      border-radius: 12px;
+      text-align: left;
+      font-size: 1rem;
+      color: #555;
+    }
+
+    .info p {
+      margin: 8px 0;
+    }
+
+    .info span {
+      font-weight: 600;
+      color: #4a90e2;
+    }
+
+    .btn-group {
+      margin-top: 15px;
+      display: flex;
+      justify-content: space-around;
+      gap: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: 0.3s ease;
+    }
+
+    button.clear {
+      background: #f0f0f0;
+      color: #555;
+    }
+
+    button:hover {
+      opacity: 0.9;
+      transform: scale(1.02);
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 15px;
+      }
+
+      .title {
+        font-size: 1.5em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="title">Sign Language to Text</h1>
+
+    <!-- Video Feed -->
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" width="480" height="640" style="display:none;"></canvas>
+
+    <!-- Prediction Info -->
+    <div class="info">
+      <p>Predicted Letter: <span id="predictedLetter">-</span></p>
+      <p>Last Letter: <span id="lastPredictedLetter">-</span></p>
+      <p>Sentence: <span id="sentenceDisplay">-</span></p>
+    </div>
+
+    <!-- Buttons -->
+    <div class="btn-group">
+      <button id="clearButton" class="clear">🗑️ Clear</button>
+    </div>
+  </div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const predictedLetter = document.getElementById('predictedLetter');
+const sentenceDisplay = document.getElementById('sentenceDisplay');
+const lastPredictedLetter = document.getElementById('lastPredictedLetter');
+const clearButton = document.getElementById('clearButton');
+
+async function getWebcam() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    video.srcObject = stream;
+  } catch (error) {
+    console.error("Error accessing webcam:", error);
+    alert("Error accessing webcam. Make sure you have a camera and permissions granted.");
+  }
+}
+
+video.addEventListener('loadedmetadata', () => {
+  video.play();
+  setInterval(predictFrame, 100);
+});
+
+async function predictFrame() {
+  if (!video.videoWidth) return;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+  const frame = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+  try {
+    const response = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error("Error:", data.error);
+      sentenceDisplay.textContent = data.sentence || "-";
+    } else {
+      predictedLetter.textContent = data.letter || "-";
+      sentenceDisplay.textContent = data.sentence || "-";
+      lastPredictedLetter.textContent = data.last_letter || "-";
+    }
+  } catch (error) {
+    console.error("Error:", error);
+  }
+}
+
+function sendSentenceToFlutter(sentence) {
+  if (window.flutter_inappwebview && sentence && sentence !== "-") {
+    window.flutter_inappwebview.callHandler('addSentenceToHistory', sentence);
+  }
+}
+
+// Clear button: send once, then reset
+clearButton.addEventListener('click', () => {
+  const sentence = sentenceDisplay.textContent;
+  sendSentenceToFlutter(sentence); // send once
+  sentenceDisplay.textContent = "-";
+  lastPredictedLetter.textContent = "-";
+  fetch('/reset', { method: 'POST' });
+});
+
+getWebcam();
+</script>
+</body>
+</html>

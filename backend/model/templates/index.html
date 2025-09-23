@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign Language to Text</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        #video {
+            border: 1px solid #ccc;
+        }
+        #predictedLetter {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: blue;
+        }
+        #sentence {
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #nextButton {
+            background-color: #4CAF50; /* Green */
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sign Language to Text Conversion</h1>
+    <video id="video" width="480" height="640" autoplay></video>
+    <canvas id="canvas" width="480" height="640" style="display:none;"></canvas>
+    <p>Predicted Letter: <span id="predictedLetter"></span></p>
+    <p>Sentence: <span id="sentence"></span></p>
+    <button id="nextButton">Add to Sentence</button>
+    <button id="speakButton">Speak</button>
+    <button id="clearButton">Clear</button>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const predictedLetter = document.getElementById('predictedLetter');
+        const sentence = document.getElementById('sentence');
+        const speakButton = document.getElementById('speakButton');
+        const clearButton = document.getElementById('clearButton');
+        const nextButton = document.getElementById('nextButton');
+
+        let currentPredictedLetter = "";  // Store the currently predicted letter
+        let lastNextClick = 0; // For debouncing
+
+        async function getWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = stream;
+            } catch (error) {
+                console.error("Error accessing webcam:", error);
+            }
+        }
+
+        video.addEventListener('loadedmetadata', () => {
+            video.play();
+            setInterval(predictFrame, 100); // Adjust interval as needed
+        });
+
+        async function predictFrame() {
+            if (!video.videoWidth) return;
+
+            canvas.getContext('2d').drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+            const frame = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ frame: frame })
+                });
+
+                const data = await response.json();
+                if (data.letter) {
+                    predictedLetter.textContent = data.letter;
+                    currentPredictedLetter = data.letter; // Store the predicted letter
+                }
+                // Remove sentence update from here
+
+            } catch (error) {
+                console.error("Error:", error);
+            }
+        }
+
+        speakButton.addEventListener('click', () => {
+            const utterance = new SpeechSynthesisUtterance(sentence.textContent);
+            window.speechSynthesis.speak(utterance);
+        });
+
+        clearButton.addEventListener('click', () => {
+            sentence.textContent = "";
+            // Reset the global sentence in the backend as well
+            fetch('/reset', { method: 'POST' });
+        });
+
+        nextButton.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - lastNextClick < 500) { // Debounce: Ignore clicks within 500ms
+                return;
+            }
+            lastNextClick = now;
+
+            if (currentPredictedLetter && currentPredictedLetter.toLowerCase() !== "next") {
+                sentence.textContent += currentPredictedLetter; // Append to sentence
+                 // Send the updated sentence to the backend
+                fetch('/update_sentence', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ sentence: sentence.textContent })
+                })
+                .catch(error => console.error("Error updating sentence:", error));
+            }
+            else if (currentPredictedLetter.toLowerCase() == "next"){
+                 // Send the updated sentence to the backend
+                fetch('/update_sentence', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ sentence: sentence.textContent })
+                })
+                .catch(error => console.error("Error updating sentence:", error));
+            }
+        });
+
+        getWebcam();
+    </script>
+</body>
+</html>
